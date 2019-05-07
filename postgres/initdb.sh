@@ -234,7 +234,7 @@ EOF
       log_info "postgres password default to REPMGRPWD"
     fi
     psql --command "alter user postgres with login password '${POSTGRES_PWD}';"
-    echo postgres:${POSTGRES_PWD} | chpasswd
+    echo postgres:${POSTGRES_PWD} | sudo chpasswd
     echo "*:*:postgres:${POSTGRES_PWD}" > /home/postgres/.pcppass && chown postgres:postgres /home/postgres/.pcppass && chmod 600 /home/postgres/.pcppass
 
     log_info "Create hcuser"

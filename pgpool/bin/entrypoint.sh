@@ -183,7 +183,7 @@ else
   log_info "postgres password default to REPMGRPWD"
 fi
 
-echo postgres:${POSTGRES_PWD} | chpasswd
+echo postgres:${POSTGRES_PWD} | sudo chpasswd
 echo "postgres:`pg_md5 --config-file $CONFIG_FILE ${POSTGRES_PWD}`" >> $PCP_FILE
 echo "*:*:postgres:${POSTGRES_PWD}" > /home/postgres/.pcppass
 
