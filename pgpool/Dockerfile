@@ -28,8 +28,8 @@ ADD pool_hba.conf /etc/pgpool-II/
 # pcp user is postgres and password is postgres (hard-coded)
 # note that this user has nothing to do with postgres or linux, it is purely for pcp
 #RUN echo "postgres:e8a48653851e28c69d0506508fb27fc5" >> /etc/pgpool-II/pcp.conf
-#RUN echo "*:*:postgres:postgres" > /home/postgres/.pcppass && \
-RUN chown postgres:postgres /home/postgres/.pcppass && \
+RUN echo "*:*:postgres:postgres" > /home/postgres/.pcppass && \
+  chown postgres:postgres /home/postgres/.pcppass && \
   chmod 600 /home/postgres/.pcppass && \
   chown -R postgres:postgres /etc/pgpool-II && \
   chmod +s /usr/sbin/arping /usr/sbin/ip
