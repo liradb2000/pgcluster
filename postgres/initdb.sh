@@ -211,7 +211,45 @@ EOF
     ps -ef
     pg_ctl -D ${PGDATA} start -o "-c 'listen_addresses=localhost'" -w 
     psql --command "create database phoenix ENCODING='UTF8' LC_COLLATE='en_US.UTF8';"
+    create_microservices
     psql phoenix -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"";
+    log_info "create repmgr user or change password"
+    USREXISTS=$(user_exists repmgr )
+    if [ $USREXISTS -eq 0 ] ; then
+      psql <<-EOF
+          create user repmgr with superuser login password '${REPMGRPWD}' ;
+          alter user repmgr set search_path to repmgr,"\$user",public;
+          \q
+EOF
+    else
+      log_info "user repmgr already exists, set password"
+      psql -c "alter user repmgr with login password '${REPMGRPWD}';"
+    fi
+
+    log_info "set password for postgres"
+    if [ ! -z ${POSTGRES_PWD} ] ; then
+      log_info "postgres password set via env"
+    else
+      POSTGRES_PWD=${REPMGRPWD}
+      log_info "postgres password default to REPMGRPWD"
+    fi
+    psql --command "alter user postgres with login password '${POSTGRES_PWD}';"
+    echo postgres:${POSTGRES_PWD} | chpasswd
+    echo "*:*:postgres:${POSTGRES_PWD}" > /home/postgres/.pcppass && chown postgres:postgres /home/postgres/.pcppass && chmod 600 /home/postgres/.pcppass
+
+    log_info "Create hcuser"
+    if [ ! -z ${HEALTH_CHECK_PWD} ] ; then
+      log_info "health_check_user password set via env"
+    else
+      HEALTH_CHECK_PWD=hcuser
+      log_info "health_check_user password default to hcuser"
+    fi
+    if [ $USREXISTS -eq 0 ] ; then
+      psql -c "create user hcuser with login password '${HEALTH_CHECK_PWD}';"
+    else
+      log_info "user hcuser already exists, set password"
+      psql -c "alter user hcuser with login password '${HEALTH_CHECK_PWD}';"
+    fi
     log_info "Creating repmgr database"
     # NB: super user needed for replication
     psql --command "create database repmgr with owner=repmgr ENCODING='UTF8' LC_COLLATE='en_US.UTF8';"
@@ -251,45 +289,7 @@ else
   log_info "File ${PGDATA}/postgresql.conf already exist"
 fi
 
-log_info "create repmgr user or change password"
-USREXISTS=$(user_exists repmgr )
-if [ $USREXISTS -eq 0 ] ; then
-  psql <<-EOF
-      create user repmgr with superuser login password '${REPMGRPWD}' ;
-      alter user repmgr set search_path to repmgr,"\$user",public;
-      \q
-EOF
-else
-  log_info "user repmgr already exists, set password"
-  psql -c "alter user repmgr with login password '${REPMGRPWD}';"
-fi
 
-log_info "set password for postgres"
-if [ ! -z ${POSTGRES_PWD} ] ; then
-  log_info "postgres password set via env"
-else
-  POSTGRES_PWD=${REPMGRPWD}
-  log_info "postgres password default to REPMGRPWD"
-fi
-psql --command "alter user postgres with login password '${POSTGRES_PWD}';"
-echo postgres:${POSTGRES_PWD} | chpasswd
-echo "*:*:postgres:${POSTGRES_PWD}" > /home/postgres/.pcppass && chown postgres:postgres /home/postgres/.pcppass && chmod 600 /home/postgres/.pcppass
-
-log_info "Create hcuser"
-if [ ! -z ${HEALTH_CHECK_PWD} ] ; then
-  log_info "health_check_user password set via env"
-else
-  HEALTH_CHECK_PWD=hcuser
-  log_info "health_check_user password default to hcuser"
-fi
-if [ $USREXISTS -eq 0 ] ; then
-  psql -c "create user hcuser with login password '${HEALTH_CHECK_PWD}';"
-else
-  log_info "user hcuser already exists, set password"
-  psql -c "alter user hcuser with login password '${HEALTH_CHECK_PWD}';"
-fi
-
-create_microservices
 
 #TODO: this trap is not used
 trap shutdown HUP INT QUIT ABRT KILL ALRM TERM TSTP
