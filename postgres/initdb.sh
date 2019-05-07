@@ -146,17 +146,6 @@ else
   REPMGRPWD=rep123
   log_info "repmgr password default to rep123"
 fi
-USREXISTS=$(user_exists repmgr )
-if [ $USREXISTS -eq 0 ] ; then
-  psql <<-EOF
-      create user repmgr with superuser login password '${REPMGRPWD}' ;
-      alter user repmgr set search_path to repmgr,"\$user",public;
-      \q
-EOF
-else
-  log_info "user repmgr already exists, set password"
-  psql -c "alter user repmgr with login password '${REPMGRPWD}';"
-fi
 log_info "setup .pgpass for replication and for repmgr"
 echo "*:*:repmgr:repmgr:${REPMGRPWD}" > /home/postgres/.pgpass
 echo "*:*:replication:repmgr:${REPMGRPWD}" >> /home/postgres/.pgpass
@@ -194,32 +183,6 @@ follow_command='repmgr -f /etc/repmgr/${PGVER}/repmgr.conf standby follow -W --u
 
 EOF
 
-log_info "set password for postgres"
-if [ ! -z ${POSTGRES_PWD} ] ; then
-  log_info "postgres password set via env"
-else
-  POSTGRES_PWD=${REPMGRPWD}
-  log_info "postgres password default to REPMGRPWD"
-fi
-psql --command "alter user postgres with login password '${POSTGRES_PWD}';"
-echo postgres:${POSTGRES_PWD} | chpasswd
-echo "*:*:postgres:${POSTGRES_PWD}" > /home/postgres/.pcppass && chown postgres:postgres /home/postgres/.pcppass && chmod 600 /home/postgres/.pcppass
-
-log_info "Create hcuser"
-if [ ! -z ${HEALTH_CHECK_PWD} ] ; then
-  log_info "health_check_user password set via env"
-else
-  HEALTH_CHECK_PWD=hcuser
-  log_info "health_check_user password default to hcuser"
-fi
-if [ $USREXISTS -eq 0 ] ; then
-  psql -c "create user hcuser with login password '${HEALTH_CHECK_PWD}';"
-else
-  log_info "user hcuser already exists, set password"
-  psql -c "alter user hcuser with login password '${HEALTH_CHECK_PWD}';"
-fi
-
-create_microservices
 
 #
 # stuff below will be done only once, when the database has not been initialized
@@ -287,6 +250,47 @@ EOF
 else
   log_info "File ${PGDATA}/postgresql.conf already exist"
 fi
+
+log_info "create repmgr user or change password"
+USREXISTS=$(user_exists repmgr )
+if [ $USREXISTS -eq 0 ] ; then
+  psql <<-EOF
+      create user repmgr with superuser login password '${REPMGRPWD}' ;
+      alter user repmgr set search_path to repmgr,"\$user",public;
+      \q
+EOF
+else
+  log_info "user repmgr already exists, set password"
+  psql -c "alter user repmgr with login password '${REPMGRPWD}';"
+fi
+
+log_info "set password for postgres"
+if [ ! -z ${POSTGRES_PWD} ] ; then
+  log_info "postgres password set via env"
+else
+  POSTGRES_PWD=${REPMGRPWD}
+  log_info "postgres password default to REPMGRPWD"
+fi
+psql --command "alter user postgres with login password '${POSTGRES_PWD}';"
+echo postgres:${POSTGRES_PWD} | chpasswd
+echo "*:*:postgres:${POSTGRES_PWD}" > /home/postgres/.pcppass && chown postgres:postgres /home/postgres/.pcppass && chmod 600 /home/postgres/.pcppass
+
+log_info "Create hcuser"
+if [ ! -z ${HEALTH_CHECK_PWD} ] ; then
+  log_info "health_check_user password set via env"
+else
+  HEALTH_CHECK_PWD=hcuser
+  log_info "health_check_user password default to hcuser"
+fi
+if [ $USREXISTS -eq 0 ] ; then
+  psql -c "create user hcuser with login password '${HEALTH_CHECK_PWD}';"
+else
+  log_info "user hcuser already exists, set password"
+  psql -c "alter user hcuser with login password '${HEALTH_CHECK_PWD}';"
+fi
+
+create_microservices
+
 #TODO: this trap is not used
 trap shutdown HUP INT QUIT ABRT KILL ALRM TERM TSTP
 ps -ef
