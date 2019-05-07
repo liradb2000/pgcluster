@@ -176,6 +176,17 @@ echo FAILOVER_ON_BACKEND_ERROR=${FAILOVER_ON_BACKEND_ERROR}
 CONNECTION_CACHE=${CONNECTION_CACHE:-on}
 echo CONNECTION_CACHE=${CONNECTION_CACHE}
 
+if [ ! -z ${POSTGRES_PWD} ] ; then
+  log_info "postgres password set via env"
+else
+  POSTGRES_PWD=${REPMGRPWD}
+  log_info "postgres password default to REPMGRPWD"
+fi
+
+echo postgres:${POSTGRES_PWD} | chpasswd
+echo "postgres:`pg_md5 --config-file $CONFIG_FILE ${POSTGRES_PWD}`" >> $PCP_FILE
+echo "*:*:postgres:${POSTGRES_PWD}" > /home/postgres/.pcppass
+
 IFS=',' read -ra PG_HOSTS <<< "$PG_BACKEND_NODE_LIST"
 nbrbackend=${#PG_HOSTS[@]}
 if [ $nbrbackend -gt 1 ] ; then
@@ -261,7 +272,7 @@ if [ $masterup -eq 0 -a ${FAILOVER_MODE} == "automatic" ] ; then
 fi
 
 echo "Create user hcuser (fails if the hcuser already exists, which is ok)"
-ssh -p 222 ${REPMGR_MASTER} "psql -c \"create user hcuser with login password 'hcuser';\""
+ssh -p 222 ${REPMGR_MASTER} "psql -c \"create user hcuser with login password '${HEALTH_CHECK_PWD}';\""
 echo "Generate pool_passwd file from ${DBHOST}"
 touch ${CONFIG_DIR}/pool_passwd
 ssh -p 222 postgres@${DBHOST} "psql -c \"select rolname,rolpassword from pg_authid;\"" | awk 'BEGIN {FS="|"}{print $1" "$2}' | grep md5 | while read f1 f2
@@ -485,7 +496,7 @@ health_check_timeout = 10
                                    # 0 means no timeout
 health_check_user = 'hcuser'
                                    # Health check user
-health_check_password = 'hcuser'
+health_check_password = '${HEALTH_CHECK_PWD}'
                                    # Password for health check user
 health_check_database = 'postgres'
                                    # Database name for health check. If '', tries 'postgres' frist,
@@ -519,7 +530,7 @@ failover_command = '/scripts/failover.sh %d %h %p %D %m %H %M %P %r %R'
                                    #   %r = new master port number
                                    #   %R = new master database cluster path
                                    #   %% = '%' character
-failback_command = 'echo failback %d %h %p %D %m %H %M %P'
+failback_command = './scripts/failback.sh %d %h %p %D %m %H %M %P'
                                    # Executes this command at failback.
                                    # Special values:
                                    #   %d = node id
@@ -575,7 +586,7 @@ search_primary_node_timeout = 0
 
 recovery_user = 'postgres'
                                    # Online recovery user
-recovery_password = '${REPMGRPWD}'
+recovery_password = '${POSTGRES_PWD}'
                                    # Online recovery password
 recovery_1st_stage_command = 'pgpool_recovery.sh'
                                    # Executes a command in first stage

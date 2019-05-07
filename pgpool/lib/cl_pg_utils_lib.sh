@@ -6,12 +6,12 @@
 
 source /opt/cl-pg-utils/lib/cl_pg_utils.env
 
-if [ ! -d /var/log/cl-pg-utils ] ; then
- sudo mkdir /var/log/cl-pg-utils
- sudo chown postgres:postgres /var/log/cl-pg-utils
-fi
+#if [ ! -d /var/log/cl-pg-utils ] ; then
+# sudo mkdir /var/log/cl-pg-utils
+# sudo chown postgres:postgres /var/log/cl-pg-utils
+#fi
 
-LOGFILE=/var/log/cl-pg-utils/cl_pg_utils.log
+LOGFILE=/var/log/pg/cl_pg_utils.log
 
 log_info(){
  str="INFO - $1 - `date +\"%Y-%m-%d %H:%M\"` - $2"

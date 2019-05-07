@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source /scripts/docker_secret/env_screts_expand.sh
+
 echo "id is : `id -un`"
 if [ `id -un` != "postgres" ] ; then
  echo "This script must be run by user postgres"
@@ -34,41 +36,38 @@ user_exists(){
 # if the users already exist, the password is changed
 #
 create_user(){
- MS=${1}
- MSOWNER=${1}_owner
- MSUSER=${1}_user
+ MSOWNER=${1}
  MSOWNER_PWD=${2}
- MSUSER_PWD=${3}
+ PARENT=${3}
+
  USREXISTS=$(user_exists ${MSOWNER} )
  if [ $USREXISTS -eq 0 ] ; then
-  log_info "create ${MSOWNER} with password ${MSOWNER_PWD}"
-  psql --dbname phoenix <<-EOF
-   create user ${MSOWNER} with login password '${MSOWNER_PWD}';
-   create schema ${MSOWNER} authorization ${MSOWNER};
-   \q
-EOF
- else
-  log_info "user ${MSOWNER} already exists, set password to ${MSOWNER_PWD}"
-  psql --dbname phoenix -c "alter user ${MSOWNER} with login password '{MSOWNER_PWD}';"
- fi
- USREXISTS=$( user_exists ${MSUSER} )
- if [ $USREXISTS -eq 0 ] ; then
-  log_info "create ${MSUSER} with password ${MSUSER_PWD}"
-  psql --dbname phoenix <<-EOF
-    create user ${MSUSER} with login password '${MSUSER_PWD}';
-    alter user ${MSUSER} set search_path to "\$user","${MSOWNER}", public;
+  if [ -z ${PARENT} ] ; then
+    psql --dbname phoenix <<-EOF
+    create user ${MSOWNER} with login password '${MSOWNER_PWD}';
+    create schema ${MSOWNER} authorization ${MSOWNER};
     \q
 EOF
-  psql --username=${MSOWNER} --dbname phoenix <<-EOF
-    grant usage on schema ${MSOWNER} to ${MSUSER};
-    alter default privileges in schema ${MSOWNER} grant select,insert,update,delete on tables to ${MSUSER};
-    alter default privileges in schema ${MSOWNER} grant usage,select on sequences to ${MSUSER};
-    alter default privileges in schema ${MSOWNER} grant execute on functions to ${MSUSER};
-    \q
+  else
+    USREXISTS=$(user_exists ${MSOWNER} )
+    if [ ! $USREXISTS -eq 0 ] ; then
+      psql --dbname phoenix <<-EOF
+      create user ${MSOWNER} with login password '${MSOWNER_PWD}';
+      alter user ${MSOWNER} set search_path to "\$user","${PARENT}", public;
+      \q
 EOF
+      psql --username=${PARENT} --dbname phoenix <<-EOF
+      grant usage on schema ${PARENT} to ${MSOWNER};
+      alter default privileges in schema ${PARENT} grant select,insert,update,delete on tables to ${MSOWNER};
+      alter default privileges in schema ${PARENT} grant usage,select on sequences to ${MSOWNER};
+      alter default privileges in schema ${PARENT} grant execute on functions to ${MSOWNER};
+      \q
+EOF
+    fi
+  fi
  else
-  log_info "user ${MSUSER} already exists, set password to ${MSUSER_PWD}"
-  psql --dbname phoenix -c "alter user ${MSUSER} with login password '{MSUSER_PWD}'";
+  log_info "user ${MSOWNER} already exists, set password"
+  psql --dbname phoenix -c "alter user ${MSOWNER} with login password '${MSOWNER_PWD}';"
  fi
 }
 
@@ -96,14 +95,11 @@ wait_for_master(){
 }
 
 log_info "Start initdb on host `hostname`"
-log_info "MSLIST: ${MSLIST}" 
-log_info "MSOWNERPWDLIST: ${MSOWNERPWDLIST}" 
-log_info "MSUSERPWDLIST: ${MSUSERPWDLIST}" 
 log_info "PGDATA: ${PGDATA}" 
 INITIAL_NODE_TYPE=${INITIAL_NODE_TYPE:-single} 
 log_info "INITIAL_NODE_TYPE: ${INITIAL_NODE_TYPE}" 
 export PATH=$PATH:/usr/pgsql-${PGVER}/bin
-MSLIST=${MSLIST-"keycloak,apiman,asset,ingest,playout"}
+USERS=${USERS-"keycloak,apiman,asset,ingest,playout"}
 NODE_ID=${NODE_ID:-1}
 NODE_NAME=${NODE_NAME:-"pg0${NODE_ID}"}
 ARCHIVELOG=${ARCHIVELOG:-1}
@@ -117,23 +113,24 @@ REPMGRD_FAILOVER_MODE=${REPMGRD_FAILOVER_MODE:-manual}
 log_info "REPMGRD_FAILOVER_MODE: ${REPMGRD_FAILOVER_MODE}"
 
 create_microservices(){
- IFS=',' read -ra MSERVICES <<< "$MSLIST"
- IFS=',' read -ra MSOWNERPASSWORDS <<< "$MSOWNERPWDLIST"
- IFS=',' read -ra MSUSERPASSWORDS <<< "$MSUSERPWDLIST"
- for((i=0;i<${#MSERVICES[@]};i++))
+ IFS=',' read -ra USERVICES <<< "$USERS"
+ for USER in ${USERVICES[@]}
  do
-    if [ ! -z ${MSOWNERPASSWORDS[$i]} ] ; then
-      OWNERPWD=${MSOWNERPASSWORDS[$i]}
-    else
-      OWNERPWD=${MSERVICES[$i]}"_owner"
+    IFS=':' read -ra INFO <<< "$USER"
+
+    ID=""
+    PASSWD=""
+    PARENT=""
+
+    [[ "${INFO[0]}" != "" ]] && ID="${INFO[0]}"
+    [[ "${INFO[1]}" != "" ]] && PASSWD="${INFO[1]}"
+    [[ "${INFO[2]}" != "" ]] && PASSWD="${INFO[2]}"
+
+    if [ -z ${PASSWD} ] ; then
+      PASSWD=${ID}"_owner"
     fi
-    if [ ! -z ${MSUSERPASSWORDS[$i]} ] ; then
-      USERPWD=${MSUSERPASSWORDS[$i]}
-    else
-      USERPWD=${MSERVICES[$i]}"_user"
-    fi
-    log_info "creating postgres users for microservice ${MSERVICES[$i]} with passwords ${OWNERPWD} and ${USERPWD}"
-    create_user  ${MSERVICES[$i]} ${OWNERPWD} ${USERPWD}
+    log_info "creating postgres ${ID} users for microservice (Parent : ${PARENT})"
+    create_user ${ID} ${PASSWD} ${PARENT}
  done
 }
 
@@ -142,11 +139,23 @@ create_microservices(){
 # this is needed in order to patch some files that are not persisted accross run
 # i.e. files that are outside the PGDATA directory (PGDATA being on shared volume)
 #
+log_info "create repmgr user or change password"
 if [ ! -z ${REPMGRPWD} ] ; then
   log_info "repmgr password set via env"
 else
   REPMGRPWD=rep123
   log_info "repmgr password default to rep123"
+fi
+USREXISTS=$(user_exists repmgr )
+if [ $USREXISTS -eq 0 ] ; then
+  psql <<-EOF
+      create user repmgr with superuser login password '${REPMGRPWD}' ;
+      alter user repmgr set search_path to repmgr,"\$user",public;
+      \q
+EOF
+else
+  log_info "user repmgr already exists, set password"
+  psql -c "alter user repmgr with login password '${REPMGRPWD}';"
 fi
 log_info "setup .pgpass for replication and for repmgr"
 echo "*:*:repmgr:repmgr:${REPMGRPWD}" > /home/postgres/.pgpass
@@ -184,6 +193,34 @@ promote_command='repmgr -f /etc/repmgr/${PGVER}/repmgr.conf standby promote'
 follow_command='repmgr -f /etc/repmgr/${PGVER}/repmgr.conf standby follow -W --upstream-node-id=%n'
 
 EOF
+
+log_info "set password for postgres"
+if [ ! -z ${POSTGRES_PWD} ] ; then
+  log_info "postgres password set via env"
+else
+  POSTGRES_PWD=${REPMGRPWD}
+  log_info "postgres password default to REPMGRPWD"
+fi
+psql --command "alter user postgres with login password '${POSTGRES_PWD}';"
+echo postgres:${POSTGRES_PWD} | chpasswd
+echo "*:*:postgres:${POSTGRES_PWD}" > /home/postgres/.pcppass && chown postgres:postgres /home/postgres/.pcppass && chmod 600 /home/postgres/.pcppass
+
+log_info "Create hcuser"
+if [ ! -z ${HEALTH_CHECK_PWD} ] ; then
+  log_info "health_check_user password set via env"
+else
+  HEALTH_CHECK_PWD=hcuser
+  log_info "health_check_user password default to hcuser"
+fi
+if [ $USREXISTS -eq 0 ] ; then
+  psql -c "create user hcuser with login password '${HEALTH_CHECK_PWD}';"
+else
+  log_info "user hcuser already exists, set password"
+  psql -c "alter user hcuser with login password '${HEALTH_CHECK_PWD}';"
+fi
+
+create_microservices
+
 #
 # stuff below will be done only once, when the database has not been initialized
 #
@@ -211,17 +248,9 @@ EOF
     ps -ef
     pg_ctl -D ${PGDATA} start -o "-c 'listen_addresses=localhost'" -w 
     psql --command "create database phoenix ENCODING='UTF8' LC_COLLATE='en_US.UTF8';"
-    create_microservices
     psql phoenix -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"";
-    log_info "Creating repmgr database and user"
+    log_info "Creating repmgr database"
     # NB: super user needed for replication
-    psql <<-EOF
-     create user repmgr with superuser login password '${REPMGRPWD}' ;
-     alter user repmgr set search_path to repmgr,"\$user",public;
-     \q
-EOF
-    log_info "set password for postgres"
-    psql --command "alter user postgres with login password '${REPMGRPWD}';"
     psql --command "create database repmgr with owner=repmgr ENCODING='UTF8' LC_COLLATE='en_US.UTF8';"
     if [ -f /usr/pgsql-${PGVER}/share/extension/pgpool-recovery.sql ] ; then
       log_info "pgpool extensions"
@@ -232,8 +261,7 @@ EOF
     fi
     cp /scripts/pgpool/pgpool_recovery.sh /scripts/pgpool/pgpool_remote_start ${PGDATA}/
     chmod 700 ${PGDATA}/pgpool_remote_start ${PGDATA}/pgpool_recovery.sh
-    log_info "Create hcuser"
-    psql -c "create user hcuser with login password 'hcuser';"
+   
     echo "ARCHIVELOG=$ARCHIVELOG" > $PGDATA/override.env
     echo "Start postgres again to register master"
     pg_ctl stop

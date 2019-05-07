@@ -2,10 +2,6 @@
 
 #put keys on the remote AND on the local server
 
-if [ ! -d /var/log/pg ] ; then
- sudo mkdir -p /var/log/pg
- sudo chown postgres:postgres /var/log/pg
-fi
 LOGFILE=/var/log/pg/follow_master.log
 if [ ! -f $LOGFILE ] ; then
  > $LOGFILE

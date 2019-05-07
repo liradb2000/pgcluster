@@ -5,7 +5,7 @@ ENV MINORVER=2
 ENV PGVER=11
 ENV REPMGRVER=4.2
 ENV PGPOOLMAJOR=4.0
-ENV PGPOOLVER=4.0.3
+ENV PGPOOLVER=4.0.4
 ENV docker=yes
 RUN yum update -y ; yum clean all && rm -rf /var/yum/cache
 RUN yum install -y epel-release libxslt sudo openssh-server openssh-clients jq passwd rsync && \
@@ -32,8 +32,8 @@ RUN usermod -G wheel -a postgres
 RUN echo "Defaults:postgres !requiretty" > /etc/sudoers.d/postgres && \
     echo "postgres ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers.d/postgres
 RUN sed -i -e "s/^%wheel/#%wheel/" -e "/^#.*%wheel.*NOPASSWD/s/^#.*%wheel/%wheel/" /etc/sudoers
-RUN echo postgres:postgres | chpasswd
-RUN echo root:postgres | chpasswd
+# RUN echo postgres:postgres | chpasswd
+# RUN echo root:postgres | chpasswd
 # .bashrc is needed for connections via ssh
 RUN  echo "export PATH=\$PATH:/usr/pgsql-${MAJORVER}/bin" >  /etc/profile.d/postgres.sh
 RUN  echo "[ -f /etc/profile ] && source /etc/profile" >> /home/postgres/.bashrc && \
@@ -42,7 +42,7 @@ RUN  echo "[ -f /etc/profile ] && source /etc/profile" >> /home/postgres/.bashrc
 # this localedef command is needed because of bug in centos docker image?
 #
 RUN localedef -i en_US -f UTF-8 en_US.UTF-8
-RUN echo "*:*:postgres:postgres" > /home/postgres/.pcppass && chown postgres:postgres /home/postgres/.pcppass && chmod 600 /home/postgres/.pcppass
+# RUN echo "*:*:postgres:postgres" > /home/postgres/.pcppass && chown postgres:postgres /home/postgres/.pcppass && chmod 600 /home/postgres/.pcppass
 ADD scripts /scripts
 ADD pgconfig /opt/pgconfig
 RUN chown -R postgres:postgres /scripts 
