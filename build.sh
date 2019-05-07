@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # unset following variable if you don't need a registry
-#DOCKER_REGISTRY=192.168.1.57:5000
-unset DOCKER_REGISTRY
+DOCKER_REGISTRY=nexregistry.com:5000
+#unset DOCKER_REGISTRY
 VER=`cat version.txt`
 
 # remove volumes so we start from scratch

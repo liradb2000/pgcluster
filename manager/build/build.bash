@@ -1,7 +1,7 @@
 #!/bin/sh
 #set -x
-# DOCKER_REGISTRY=192.168.1.57:5000
-unset DOCKER_REGISTRY
+DOCKER_REGISTRY=nexregistry.com:5000
+#unset DOCKER_REGISTRY
 
 THISDIR=`pwd`
 NOCACHE=true

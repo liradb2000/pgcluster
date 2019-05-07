@@ -2,6 +2,8 @@
 
 CONFIG_DIR=/etc/pgpool-II
 CONFIG_FILE=${CONFIG_DIR}/pgpool.conf
+PCP_FILE=${CONFIG_DIR}/pcp.conf
+HBA_FILE=${CONFIG_DIR}/pool_hba.conf
 
 is_db_up(){
   echo "Is DB up for host ${1} port ${2:-5432} ?"
@@ -775,4 +777,4 @@ rm -f /var/run/pgpool/pgpool.pid /var/run/pgpool/.s.PGSQL.9999 /var/run/pgpool/.
 log_info "inject env variables into config file"
 injectConfigsFromEnv
 log_info "Start pgpool in foreground"
-exec /usr/bin/pgpool -f ${CONFIG_FILE} -n
+exec /usr/bin/pgpool -n -f ${CONFIG_FILE} -F $PCP_FILE -a $HBA_FILE
