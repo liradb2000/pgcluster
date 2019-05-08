@@ -23,7 +23,7 @@ function shutdown()
 #
 user_exists(){
  USER=${1}
- psql -c "select usename from pg_user where usename=upper('${USER}')" | grep -q "(0 rows)"
+ psql -c "select usename from pg_user where usename=lower('${USER}')" | grep -q "(0 rows)"
  if  [ $? -eq 0  ] ; then
    echo 0
  else
@@ -295,7 +295,7 @@ EOF
 else
   echo starting database
   ps -ef
-  pg_ctl -D ${PGDATA} start -o "-c 'listen_addresses=localhost'" -w 
+  pg_ctl -D ${PGDATA} start -o "-c 'listen_addresses=localhost'" -w
   log_info "File ${PGDATA}/postgresql.conf already exist"
   create_microservices
   create_update_admin
