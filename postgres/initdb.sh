@@ -135,6 +135,11 @@ create_microservices(){
  done
 }
 
+set_postgres_passwd(){
+  echo postgres:${POSTGRES_PWD} | sudo chpasswd
+  echo "*:*:postgres:${POSTGRES_PWD}" > /home/postgres/.pcppass && chown postgres:postgres /home/postgres/.pcppass && chmod 600 /home/postgres/.pcppass
+}
+
 create_update_admin(){
   log_info "create repmgr user or change password"
   USREXISTS=$(user_exists repmgr )
@@ -157,8 +162,7 @@ EOF
     log_info "postgres password default to REPMGRPWD"
   fi
   psql --command "alter user postgres with login password '${POSTGRES_PWD}';"
-  echo postgres:${POSTGRES_PWD} | sudo chpasswd
-  echo "*:*:postgres:${POSTGRES_PWD}" > /home/postgres/.pcppass && chown postgres:postgres /home/postgres/.pcppass && chmod 600 /home/postgres/.pcppass
+  set_postgres_passwd
 
   log_info "Create hcuser"
   if [ ! -z ${HEALTH_CHECK_PWD} ] ; then
@@ -279,6 +283,7 @@ EOF
     pg_ctl stop
   else
     log_info "This is a slave. Wait that master is up and running"
+    set_postgres_passwd
     wait_for_master
     if [ $? -eq 0 ] ; then
      log_info "Master ready, sleep 10 seconds before cloning slave"
